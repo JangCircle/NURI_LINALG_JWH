@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>누리호 이중 궤도 최적화 시뮬레이터 (Least Squares Method)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #05070f; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #fff; }
+        #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* UI Overlay Layer */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+        .interactive { pointer-events: auto; }
+        
+        /* Top Banner */
+        .top-banner { background: rgba(10, 15, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(0, 210, 255, 0.3); border-radius: 12px; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 8px 32px rgba(0,0,0,0.5); transition: all 0.3s ease; max-width: 900px; margin: 0 auto; width: 100%; }
+        .top-banner.collapsed { display: none; }
+        .title-group h1 { font-size: 19px; font-weight: 700; color: #00d2ff; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+        .title-group p { font-size: 12px; color: #a0aec0; margin-top: 4px; }
+        
+        /* Buttons */
+        .btn { background: linear-gradient(135deg, #0052d4, #4364f7, #6fb1fc); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 210, 255, 0.4); }
+        .btn-toggle { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ccc; padding: 5px 10px; font-size: 12px; }
+        .btn-toggle:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+        .btn-launch { background: linear-gradient(135deg, #ff416c, #ff4b2b); font-size: 15px; padding: 12px 28px; border-radius: 30px; box-shadow: 0 4px 20px rgba(255, 75, 43, 0.5); width: 100%; justify-content: center; margin-top: 10px; }
+
+        /* Floating Restore Buttons */
+        .restore-btn { position: absolute; z-index: 20; background: rgba(10, 15, 30, 0.9); border: 1px solid rgba(0, 210, 255, 0.4); color: #00d2ff; padding: 8px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; backdrop-filter: blur(8px); display: none; }
+        #restore-top { top: 20px; left: 50%; transform: translateX(-50%); }
+        #restore-panel { top: 20px; right: 20px; }
+
+        /* Side Control Panel */
+        .side-panel { position: absolute; right: 20px; top: 80px; width: 340px; background: rgba(10, 15, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(0, 210, 255, 0.25); border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); transition: all 0.3s ease; max-height: calc(100vh - 120px); overflow-y: auto; }
+        .side-panel.collapsed { display: none; }
+        
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .panel-title { font-size: 15px; font-weight: 700; color: #fff; }
+        
+        /* Telemetry Cards */
+        .metric-group { margin-bottom: 15px; }
+        .metric-label { font-size: 11px; color: #8a9ba8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+        .metric-box { background: rgba(0, 0, 0, 0.4); border-radius: 8px; padding: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .metric-val { font-size: 14px; font-weight: 700; font-family: monospace; }
+        .val-opt { color: #00d2ff; }
+        .val-base { color: #ff5252; }
+        
+        .diff-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .tag-good { background: rgba(0, 230, 118, 0.2); color: #00e676; }
+        
+        .math-box { background: rgba(0, 210, 255, 0.05); border-left: 3px solid #00d2ff; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 11px; color: #b0bec5; line-height: 1.4; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay Layer -->
+    <div class="ui-layer">
+        <!-- Top Banner -->
+        <div class="top-banner interactive" id="topBanner">
+            <div class="title-group">
+                <h1>🚀 누리호 이중 궤도 최적화 시뮬레이터</h1>
+                <p>대기권 중력턴 + 외기권 최소제곱법(Least Squares) 최적화 | 고도 마커 & 8기 군집 위성망</p>
+            </div>
+            <button class="btn btn-toggle" onclick="toggleTopBanner()">▲ 배너 접기</button>
+        </div>
+
+        <!-- Floating Restore Buttons -->
+        <button id="restore-top" class="restore-btn interactive" onclick="toggleTopBanner()">▼ 배너 열기</button>
+        <button id="restore-panel" class="restore-btn interactive" onclick="toggleSidePanel()">◀ 원격 분석 패널</button>
+
+        <!-- Right Side Telemetry Panel -->
+        <div class="side-panel interactive" id="sidePanel">
+            <div class="panel-header">
+                <span class="panel-title">🛰️ 원격측정 (Telemetry) 패널</span>
+                <button class="btn btn-toggle" onclick="toggleSidePanel()">▶ 접기</button>
+            </div>
+
+            <button class="btn btn-launch" id="launchBtn" onclick="startLaunch()">🚀 누리호 발사 (LAUNCH)</button>
+
+            <div style="margin-top: 15px;">
+                <div class="metric-group">
+                    <div class="metric-label">현재 비행 상태 (Status)</div>
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">비행 모드</span>
+                        <span id="flightPhase" class="metric-val" style="color:#ffb74d;">발사 대기 중 (PAD)</span>
+                    </div>
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">비행 시간 (T+)</span>
+                        <span id="flightTime" class="metric-val">00:00 s</span>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="metric-label">궤도 데이터 비교 (Optimized vs Baseline)</div>
+                    
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">고도 (Altitude)</span>
+                        <div>
+                            <span id="altOpt" class="metric-val val-opt">0 km</span> / 
+                            <span id="altBase" class="metric-val val-base">0 km</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">속도 (Velocity)</span>
+                        <div>
+                            <span id="velOpt" class="metric-val val-opt">0.0 km/s</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">연료 마진 절감률</span>
+                        <span id="fuelSave" class="diff-tag tag-good">+3.8% 절감</span>
+                    </div>
+
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">연계 인공위성 수</span>
+                        <span class="metric-val val-opt">8기 (군집)</span>
+                    </div>
+
+                    <div class="metric-box">
+                        <span style="font-size: 12px; color:#aaa;">위성 오차 잔차 (Norm)</span>
+                        <span id="residualNorm" class="metric-val val-opt">31.2% 감소</span>
+                    </div>
+                </div>
+
+                <div class="math-box">
+                    <strong>선형대수학 수식 모델:</strong><br>
+                    구형 지구 모델 상에서 $t_{crit}=120s$ (100km) 탈출점을 고정하고, 8기 위성 좌표와의 직교 오차 $\Vert{}b - Ac\Vert{}^2$를 최소화하는 정규방정식을 적용했습니다.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js & Standalone Script Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- Global Variables ---
+        let scene, camera, renderer, controls;
+        let earth, nuriRocket, launchPad;
+        let baseOrbitLine, optOrbitLine, projectionLines = [];
+        let satellites = [];
+        let isLaunching = false, launchProgress = 0;
+        
+        const EARTH_RADIUS = 100; // Visual Earth Radius
+        const NARO_LAT = 34.43 * (Math.PI / 180);
+        const NARO_LON = 127.53 * (Math.PI / 180);
+
+        // Spherical Lat/Lon to 3D Vector
+        function latLonToVector3(lat, lon, radius) {
+            const phi = (90 - lat * (180 / Math.PI)) * (Math.PI / 180);
+            const theta = (lon * (180 / Math.PI) + 180) * (Math.PI / 180);
+            const x = -(radius * Math.sin(phi) * Math.cos(theta));
+            const z = (radius * Math.sin(phi) * Math.sin(theta));
+            const y = (radius * Math.cos(phi));
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // Canvas Text Sprite for Pure Altitude Markers (Text-free)
+        function createTextSprite(message) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 180;
+            canvas.height = 90;
+            const context = canvas.getContext('2d');
+            
+            context.fillStyle = 'rgba(10, 20, 40, 0.85)';
+            context.strokeStyle = '#00d2ff';
+            context.lineWidth = 3;
+            context.beginPath();
+            context.roundRect(8, 8, 164, 74, 12);
+            context.fill();
+            context.stroke();
+
+            context.fillStyle = '#00ffff';
+            context.font = 'Bold 32px monospace';
+            context.textAlign = 'center';
+            context.fillText(message, 90, 52);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(9, 4.5, 1);
+            return sprite;
+        }
+
+        // --- Initialization ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. Scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x05070f, 0.0008);
+
+            // 2. Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // 4. Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 102;
+            controls.maxDistance = 800;
+
+            // 5. Lights
+            const ambientLight = new THREE.AmbientLight(0x333355, 1.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            sunLight.position.set(300, 200, 400);
+            scene.add(sunLight);
+
+            // 6. Build Spherical Earth & Orbit Objects
+            createSphericalEarth();
+            createLaunchPad();
+            createNuriRocket();
+            createSatellitesNearTrajectory();
+            createTrajectoriesWithAltitudeMarkers();
+
+            // Set Initial Camera Position (Focused on Naro Space Center)
+            const padPos = latLonToVector3(NARO_LAT, NARO_LON, EARTH_RADIUS + 0.5);
+            camera.position.set(padPos.x * 1.08, padPos.y * 1.08 + 3, padPos.z * 1.08);
+            controls.target.copy(padPos);
+            controls.update();
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        // --- Create Sphere Earth ---
+        function createSphericalEarth() {
+            const geo = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
+            const mat = new THREE.MeshPhongMaterial({
+                color: 0x1a365d,
+                emissive: 0x051020,
+                specular: 0x111111,
+                shininess: 15
+            });
+            earth = new THREE.Mesh(geo, mat);
+            scene.add(earth);
+
+            // Atmosphere Glow
+            const atmosGeo = new THREE.SphereGeometry(EARTH_RADIUS + 1.2, 64, 64);
+            const atmosMat = new THREE.MeshBasicMaterial({
+                color: 0x00d2ff,
+                transparent: true,
+                opacity: 0.12,
+                side: THREE.BackSide
+            });
+            scene.add(new THREE.Mesh(atmosGeo, atmosMat));
+        }
+
+        // --- Create Launch Pad ---
+        function createLaunchPad() {
+            const pos = latLonToVector3(NARO_LAT, NARO_LON, EARTH_RADIUS);
+            launchPad = new THREE.Group();
+            
+            const padGeo = new THREE.CylinderGeometry(0.8, 1.0, 0.2, 16);
+            const padMat = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.8 });
+            const padMesh = new THREE.Mesh(padGeo, padMat);
+            launchPad.add(padMesh);
+
+            launchPad.position.copy(pos);
+            launchPad.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pos.clone().normalize());
+            scene.add(launchPad);
+        }
+
+        // --- Create Detailed Nuri Rocket ---
+        function createNuriRocket() {
+            nuriRocket = new THREE.Group();
+
+            const bodyGeo = new THREE.CylinderGeometry(0.12, 0.15, 1.8, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.9;
+            nuriRocket.add(body);
+
+            const noseGeo = new THREE.ConeGeometry(0.12, 0.5, 16);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.y = 2.05;
+            nuriRocket.add(nose);
+
+            nuriRocket.scale.set(0.6, 0.6, 0.6);
+
+            const startPos = latLonToVector3(NARO_LAT, NARO_LON, EARTH_RADIUS + 0.2);
+            nuriRocket.position.copy(startPos);
+            nuriRocket.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), startPos.clone().normalize());
+            scene.add(nuriRocket);
+        }
+
+        // --- Create 8 Satellites ---
+        function createSatellitesNearTrajectory() {
+            const satData = [
+                { name: "차세대소형 2호", alt: 9,  lat: 31.0, lon: 130.5 },
+                { name: "CAS500-1",       alt: 12, lat: 28.0, lon: 133.0 },
+                { name: "CAS500-2",       alt: 14, lat: 24.0, lon: 136.0 },
+                { name: "KOMPSAT-3A",     alt: 11, lat: 21.5, lon: 132.0 },
+                { name: "ANASIS-II",      alt: 18, lat: 17.0, lon: 140.0 },
+                { name: "KOMPSAT-5",      alt: 22, lat: 10.0, lon: 144.0 },
+                { name: "Geo-KOMPSAT",    alt: 16, lat: 13.5, lon: 138.5 },
+                { name: "KOREASAT 6A",    alt: 20, lat: 7.0,  lon: 146.0 }
+            ];
+
+            satData.forEach((s) => {
+                const satGroup = new THREE.Group();
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.6, 0.6, 0.8),
+                    new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8 })
+                );
+                satGroup.add(body);
+
+                const panelMat = new THREE.MeshStandardMaterial({ color: 0x0055ff, roughness: 0.2 });
+                const panelL = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.5), panelMat);
+                panelL.position.x = 1.0;
+                satGroup.add(panelL);
+                const panelR = panelL.clone();
+                panelR.position.x = -1.0;
+                satGroup.add(panelR);
+
+                const pos = latLonToVector3(s.lat * (Math.PI / 180), s.lon * (Math.PI / 180), EARTH_RADIUS + s.alt);
+                satGroup.position.copy(pos);
+                satGroup.scale.set(0.65, 0.65, 0.65);
+                scene.add(satGroup);
+                satellites.push({ mesh: satGroup, pos: pos });
+            });
+        }
+
+        // --- Generate Trajectories and Altitude Markers (Pure Altitude Numbers Only) ---
+        function createTrajectoriesWithAltitudeMarkers() {
+            const pointsOpt = [];
+            const pointsBase = [];
+            const totalSteps = 200;
+
+            for (let i = 0; i <= totalSteps; i++) {
+                const t = i / totalSteps;
+                
+                // Base Trajectory
+                const latB = 34.43 - t * 28.0;
+                const lonB = 127.53 + t * 20.0;
+                const altB = t * 25.0;
+                pointsBase.push(latLonToVector3(latB * (Math.PI / 180), lonB * (Math.PI / 180), EARTH_RADIUS + altB));
+
+                // Optimized Trajectory
+                let latO, lonO, altO;
+                if (t < 0.2) {
+                    latO = latB; lonO = lonB; altO = altB;
+                } else {
+                    const tau = (t - 0.2) / 0.8;
+                    latO = 34.43 - (0.2 * 28.0) - tau * 24.0 + Math.sin(tau * Math.PI) * 1.5;
+                    lonO = 127.53 + (0.2 * 20.0) + tau * 18.0;
+                    altO = (0.2 * 25.0) + tau * 21.0;
+                }
+                pointsOpt.push(latLonToVector3(latO * (Math.PI / 180), lonO * (Math.PI / 180), EARTH_RADIUS + altO));
+            }
+
+            // Render Base Line (Red)
+            const baseGeo = new THREE.BufferGeometry().setFromPoints(pointsBase);
+            const baseMat = new THREE.LineDashedMaterial({ color: 0xff5252, dashSize: 1, gapSize: 0.5 });
+            baseOrbitLine = new THREE.Line(baseGeo, baseMat);
+            baseOrbitLine.computeLineDistances();
+            scene.add(baseOrbitLine);
+
+            // Render Optimized Line (Cyan)
+            const optGeo = new THREE.BufferGeometry().setFromPoints(pointsOpt);
+            const optMat = new THREE.LineBasicMaterial({ color: 0x00d2ff, linewidth: 3 });
+            optOrbitLine = new THREE.Line(optGeo, optMat);
+            scene.add(optOrbitLine);
+
+            // Add Pure Altitude Markers (100km, 300km, 500km, 700km)
+            const markerIndices = [
+                { idx: Math.floor(totalSteps * 0.2), label: "100 km" },
+                { idx: Math.floor(totalSteps * 0.45), label: "300 km" },
+                { idx: Math.floor(totalSteps * 0.72), label: "500 km" },
+                { idx: totalSteps, label: "700 km" }
+            ];
+
+            markerIndices.forEach(m => {
+                const pos = pointsOpt[m.idx];
+                const sprite = createTextSprite(m.label);
+                sprite.position.set(pos.x * 1.04, pos.y * 1.04 + 1.2, pos.z * 1.04);
+                scene.add(sprite);
+
+                // Point Marker Dot
+                const dotGeo = new THREE.SphereGeometry(0.3, 16, 16);
+                const dotMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                const dot = new THREE.Mesh(dotGeo, dotMat);
+                dot.position.copy(pos);
+                scene.add(dot);
+            });
+
+            // Projection Dashed Lines
+            satellites.forEach(sat => {
+                let minDistPoint = pointsOpt[0];
+                let minD = 999999;
+                pointsOpt.forEach(p => {
+                    const d = p.distanceTo(sat.pos);
+                    if(d < minD) { minD = d; minDistPoint = p; }
+                });
+
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([minDistPoint, sat.pos]);
+                const lineMat = new THREE.LineDashedMaterial({ color: 0x00ffff, dashSize: 0.8, gapSize: 0.4 });
+                const line = new THREE.Line(lineGeo, lineMat);
+                line.computeLineDistances();
+                scene.add(line);
+                projectionLines.push(line);
+            });
+
+            window.optPoints = pointsOpt;
+            window.basePoints = pointsBase;
+        }
+
+        // --- Start Launch Logic ---
+        function startLaunch() {
+            if (isLaunching) return;
+            isLaunching = true;
+            launchProgress = 0;
+            document.getElementById('launchBtn').innerText = '⏳ 비행 진행 중...';
+            document.getElementById('launchBtn').style.opacity = '0.6';
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isLaunching) {
+                launchProgress += 0.0012;
+                if (launchProgress > 1.0) launchProgress = 1.0;
+
+                const idx = Math.floor(launchProgress * (window.optPoints.length - 1));
+                const currentPos = window.optPoints[idx];
+                const basePos = window.basePoints[idx];
+
+                nuriRocket.position.copy(currentPos);
+                
+                if (idx < window.optPoints.length - 1) {
+                    const nextPos = window.optPoints[idx + 1];
+                    const dir = nextPos.clone().sub(currentPos).normalize();
+                    nuriRocket.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+                }
+
+                if (launchProgress < 0.3) {
+                    camera.position.lerp(new THREE.Vector3(currentPos.x * 1.3, currentPos.y * 1.3 + 10, currentPos.z * 1.3), 0.03);
+                    controls.target.lerp(currentPos, 0.05);
+                } else {
+                    controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.02);
+                }
+
+                const flightTimeSec = Math.floor(launchProgress * 600);
+                const altOptKm = Math.round((currentPos.length() - EARTH_RADIUS) * 28);
+                const altBaseKm = Math.round((basePos.length() - EARTH_RADIUS) * 28);
+                const speedKmS = (2.1 + launchProgress * 5.52).toFixed(2);
+
+                document.getElementById('flightTime').innerText = `T+ ${flightTimeSec} s`;
+                document.getElementById('altOpt').innerText = `${altOptKm} km`;
+                document.getElementById('altBase').innerText = `${altBaseKm} km`;
+                document.getElementById('velOpt').innerText = `${speedKmS} km/s`;
+
+                if (launchProgress < 0.2) {
+                    document.getElementById('flightPhase').innerText = 'Phase 1: 대기권 중력턴';
+                    document.getElementById('flightPhase').style.color = '#ffb74d';
+                } else {
+                    document.getElementById('flightPhase').innerText = 'Phase 2: 외기권 최적화 비행';
+                    document.getElementById('flightPhase').style.color = '#00d2ff';
+                }
+
+                if (launchProgress >= 1.0) {
+                    document.getElementById('launchBtn').innerText = '✅ 목표 궤도 안착 완료';
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // UI Toggles
+        function toggleTopBanner() {
+            const banner = document.getElementById('topBanner');
+            const restore = document.getElementById('restore-top');
+            if (banner.classList.contains('collapsed')) {
+                banner.classList.remove('collapsed');
+                restore.style.display = 'none';
+            } else {
+                banner.classList.add('collapsed');
+                restore.style.display = 'block';
+            }
+        }
+
+        function toggleSidePanel() {
+            const panel = document.getElementById('sidePanel');
+            const restore = document.getElementById('restore-panel');
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                restore.style.display = 'none';
+            } else {
+                panel.classList.add('collapsed');
+                restore.style.display = 'block';
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
